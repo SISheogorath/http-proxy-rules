@@ -1,17 +1,13 @@
 
 var http = require('http'),
     httpProxy = require('http-proxy'),
-    HttpProxyRules = require('../');
+    HttpProxySticker = require('../');
 
-module.exports = function spawnReverseProxy(cb) {
+function spawnReverseProxy(cb) {
 
   // Set up proxy rules instance
-  var proxyRules = new HttpProxyRules({
-    rules: {
-      '.*/test': 'http://localhost:8080/cool', // Rule (1)
-      '.*/test2/': 'http://localhost:8080/cool2/' // Rule (2)
-    },
-    default: 'http://localhost:8080' // default target
+  var proxyRules = new HttpProxySticker({
+	  targets: ['http://localhost:1280', "http://localhost:2368"] // default target
   });
 
   // Create reverse proxy instance
@@ -20,10 +16,9 @@ module.exports = function spawnReverseProxy(cb) {
   // Create http server that leverages reverse proxy instance
   // and proxy rules to proxy requests to different targets
   http.createServer(function(req, res) {
-
     // a match method is exposed on the proxy rules instance
     // to test a request to see if it matches against one of the specified rules
-    var target = proxyRules.match(req);
+    var target = proxyRules.select(req);
     if (target) {
       return proxy.web(req, res, {
         target: target
@@ -35,3 +30,5 @@ module.exports = function spawnReverseProxy(cb) {
   }).listen(6010, cb);
 
 };
+
+spawnReverseProxy(console.log);

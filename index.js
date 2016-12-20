@@ -1,11 +1,13 @@
-
+var Etcd = require("node-etcd");
+var util = require("util");
+var current = 0;
 /**
  * This is a constructor for a HttpProxyRules instance.
- * @param {Object} options Takes in a `rules` obj, (optional) `default` target
+ * @param {Object} options Takes in a `targets` obj
  */
-function HttpProxyRules(options) {
-  this.rules = options.rules;
-  this.default = options.default || null;
+function HttpProxySticker(options) {
+  this.targets = options.targets;
+  this.etcd = new Etcd("http://127.0.0.1:2379")
 
   return this;
 };
@@ -15,39 +17,39 @@ function HttpProxyRules(options) {
  * We also return the new endpoint string if a match is found.
  * @param  {Object} options Takes in a `req` object.
  */
-HttpProxyRules.prototype.match = function match(req) {
-  var rules = this.rules;
-  var target = this.default;
-  var path = req.url;
+HttpProxySticker.prototype.select = function select(req) {
+  var targets = this.targets;
+  var target = selectTarget(targets);
+  var etcd = this.etcd;
+  var path = new Buffer(req.url).toString("base64");
+  var referrer = req.headers.referer || null;
 
-  // go through the proxy rules, assuming keys (path prefixes) are ordered
-  // and pick the first target whose path prefix is a prefix of the
-  // request url path. RegExp enabled.
-  var pathPrefixRe;
-  var testPrefixMatch;
-  var urlPrefix;
-  var pathEndsWithSlash;
-  for (var pathPrefix in rules) {
-    if (rules.hasOwnProperty(pathPrefix)) {
-      if (pathPrefix[pathPrefix.length - 1] === '/') {
-        pathPrefixRe = new RegExp(pathPrefix);
-        pathEndsWithSlash = true;
-      } else {
-        // match '/test' or '/test/' or './test?' but not '/testing'
-        pathPrefixRe = new RegExp('(' + pathPrefix + ')' + '(?:\\W|$)');
-        pathEndsWithSlash = false;
-      }
-      testPrefixMatch = pathPrefixRe.exec(path);
-      if (testPrefixMatch && testPrefixMatch.index === 0) {
-        urlPrefix = pathEndsWithSlash ? testPrefixMatch[0] : testPrefixMatch[1];
-        req.url = path.replace(urlPrefix, '');
-        target = rules[pathPrefix];
-        break;
-      }
-    }
+  if (referrer) {
+    util.log("referrer used")
+    path = new Buffer(referrer).toString("base64");
   }
 
+  var result = etcd.getSync(path)
+  if (result.err && result.err.errorCode === 100) {
+    etcd.setSync(path, target, {ttl: 30})
+    util.log ("1: " + target + " path: "  + path)
+  } else if (result.err === null) {
+    target = result.body.node.value;
+    util.log ("2: " + target + " path: " + path)
+  } else {
+    util.log(result)
+  }
   return target;
 }
 
-module.exports = HttpProxyRules;
+function selectTarget(targets) {
+  if (current >= targets.length - 1) 
+    current = 0; 
+  else
+    current++;
+
+  util.log("Current: "+ current);
+  return targets[current];
+}
+
+module.exports = HttpProxySticker;
