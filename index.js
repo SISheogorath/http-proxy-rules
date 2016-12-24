@@ -1,6 +1,9 @@
 var Etcd = require("node-etcd");
 var util = require("util");
+var timers = require("timers");
 var current = 0;
+var keep = {};
+
 /**
  * This is a constructor for a HttpProxyRules instance.
  * @param {Object} options Takes in a `targets` obj
@@ -9,6 +12,11 @@ function HttpProxySticker(options) {
   this.targets = options.targets;
   this.etcd = new Etcd("http://127.0.0.1:2379")
 
+  timers.setInterval(function (etcd) {
+    Object.keys(keep).forEach(function(path) {
+      etcd.set(path, null, {refresh: true, ttl: 30}, function(){util.log("Refreshed key for " + path)});
+    });
+  }, 10*1000, this.etcd)
   return this;
 };
 
@@ -35,6 +43,7 @@ HttpProxySticker.prototype.select = function select(req) {
     util.log ("1: " + target + " path: "  + path)
   } else if (result.err === null) {
     target = result.body.node.value;
+    keep[path] = true;
     util.log ("2: " + target + " path: " + path)
   } else {
     util.log(result)
